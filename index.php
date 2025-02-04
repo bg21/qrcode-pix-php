@@ -15,8 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $merchantName = filter_input(INPUT_POST, 'merchant_name', FILTER_SANITIZE_STRING);
         $merchantCity = filter_input(INPUT_POST, 'merchant_city', FILTER_SANITIZE_STRING);
         $amount = filter_input(INPUT_POST, 'amount', FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-        $tid = filter_input(INPUT_POST, 'tid', FILTER_SANITIZE_STRING);
-        $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_STRING);
+        $tid = filter_input(INPUT_POST, 'tid', FILTER_SANITIZE_STRING) ?? '';
+        $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_STRING) ?? '';
 
         // Mapeamento do tipo da chave Pix
         $keyTypeMap = [
@@ -46,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ->setMerchantName($merchantName)
             ->setMerchantCity($merchantCity)
             ->setAmount($amount)
-            ->setTid($tid)
-            ->setDescription($description);
+            ->setTid($tid) // Garantindo que TID não seja null
+            ->setDescription($description); // Garantindo que a descrição não seja null
 
         // Gerando o código Pix
         $pixCode = $payload->getPixCode();
@@ -61,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = $e->getMessage();
     }
 }
-
 ?>
+
 
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -71,6 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerador de QR Code Pix</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.7-beta.29/jquery.inputmask.min.js"></script>
     <style>
         .container-custom {
             max-width: 1024px;
@@ -78,13 +80,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .qr-code-container {
             display: flex;
             justify-content: center;
-            min-height: 100%;
         }
+        .qrcode-img {
+            width: 200px; /* Define um tamanho menor */
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .pix-code-box {
+            background: #f8f9fa;
+            border-radius: 5px;
+            text-align: center;
+            word-break: break-all;
+            font-size: 16px;
+        }
+        .copy-btn {
+            display: block;
+            width: 100%;
+        }
+
     </style>
 </head>
 <body class="bg-light">
 
-    <div class="container container-custom mt-5">
+    <div class="container container-custom mt-3">
         <div class="row">
             <!-- Coluna do Formulário -->
             <div class="col-md-6">
@@ -99,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <form method="POST">
                             <div class="mb-3">
                                 <label class="form-label">Tipo da Chave Pix:</label>
-                                <select name="key_type" class="form-select" required>
+                                <select name="key_type" id="key_type" class="form-select" required>
                                     <option value="email">E-mail</option>
                                     <option value="document">CPF/CNPJ</option>
                                     <option value="phone">Telefone</option>
@@ -109,34 +128,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             <div class="mb-3">
                                 <label class="form-label">Chave Pix:</label>
-                                <input type="text" name="pix_key" class="form-control" required>
+                                <input type="text" name="pix_key" id="pix_key" class="form-control" required>
                             </div>
 
-                            <div class="row mb-3">
-                                <div class="col-md-7">
+                            <div class="mb-3">
                                 <label class="form-label">Nome do Recebedor:</label>
                                 <input type="text" name="merchant_name" class="form-control" required>
-                                </div>
-                                <div class="col-md-5">
+                            </div>
+
+                            <div class="mb-3">
                                 <label class="form-label">Cidade do Recebedor:</label>
                                 <input type="text" name="merchant_city" class="form-control" required>
-                                </div>
                             </div>
-                            
 
                             <div class="mb-3">
                                 <label class="form-label">Valor (R$):</label>
                                 <input type="number" step="0.01" name="amount" class="form-control" required>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label">ID da Transação (TID) (opcional):</label>
-                                <input type="text" name="tid" class="form-control">
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label">Descrição do Pagamento:</label>
-                                <input type="text" name="description" class="form-control">
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100">Gerar QR Code</button>
@@ -146,14 +153,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <!-- Coluna do QR Code -->
-            <div class="col-md-6 qr-code-container">
+            <div class="col-md-6 qr-code-container ">
                 <?php if (isset($pixCode)): ?>
-                    <div class="card shadow-sm p-3">
-                        <div class="card-body text-center">
+                    <div class="card shadow-sm">
+                        <div class="card-body text-center  p-4">
                             <h5>Código Pix:</h5>
-                            <p class="alert alert-success"><?= htmlspecialchars($pixCode) ?></p>
-                            <h5>QR Code:</h5>
-                            <img src="<?= htmlspecialchars($qrCode) ?>" alt="QR Code de Pagamento" class="img-fluid mt-2">
+                            <div id="pixCodeBox" class="pix-code-box mt-4">
+                                <p class="alert alert-success">
+                                <?= htmlspecialchars($pixCode) ?>
+                                </p></div>
+                            <button class="btn btn-outline-secondary copy-btn" onclick="copyToClipboard()">Copiar Código Pix</button>
+                            <p id="copyMessage" class="text-success" style="display: none;">Copiado!</p>
+
+                            <h5 class="mt-5">QR Code:</h5>
+                            <img src="<?= htmlspecialchars($qrCode) ?>" alt="QR Code de Pagamento" class="qrcode-img">
                         </div>
                     </div>
                 <?php endif; ?>
@@ -161,6 +174,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            function aplicarMascara() {
+                let tipoChave = $("#key_type").val();
+                let inputChave = $("#pix_key");
+
+                inputChave.val("").removeAttr("placeholder");
+
+                if (tipoChave === "document") {
+                    inputChave.attr("placeholder", "CPF ou CNPJ");
+                    inputChave.inputmask({
+                        mask: ["999.999.999-99", "99.999.999/9999-99"],
+                        keepStatic: true
+                    });
+                } else if (tipoChave === "phone") {
+                    inputChave.attr("placeholder", "(00) 00000-0000");
+                    inputChave.inputmask({
+                        mask: "(99) 99999-9999"
+                    });
+                } else {
+                    inputChave.inputmask("remove");
+                }
+            }
+
+            $("#key_type").change(aplicarMascara);
+            aplicarMascara();
+        });
+
+        function copyToClipboard() {
+            let copyText = document.getElementById("pixCodeBox").innerText;
+            navigator.clipboard.writeText(copyText).then(() => {
+                document.getElementById("copyMessage").style.display = "block";
+                setTimeout(() => {
+                    document.getElementById("copyMessage").style.display = "none";
+                }, 2000);
+            });
+        }
+    </script>
+
 </body>
 </html>
