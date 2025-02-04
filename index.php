@@ -1,70 +1,52 @@
-<?php 
-
+<?php
 require_once('vendor/autoload.php');
 
 use Piggly\Pix\Exceptions\InvalidPixKeyException;
 use Piggly\Pix\Exceptions\InvalidPixKeyTypeException;
-use Piggly\Pix\Parser;
+use Piggly\Pix\Exceptions\InvalidEmvFieldException;
+use Piggly\Pix\Exceptions\EmvIdIsRequiredException;
 use Piggly\Pix\StaticPayload;
+
+$pixCode = null;
+$qrCode = null;
+$error = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        // Captura e sanitiza os dados do formulário
-        $keyType = filter_input(INPUT_POST, 'key_type', FILTER_SANITIZE_STRING);
-        $keyValue = filter_input(INPUT_POST, 'pix_key', FILTER_SANITIZE_STRING);
-        $merchantName = filter_input(INPUT_POST, 'merchant_name', FILTER_SANITIZE_STRING);
-        $merchantCity = filter_input(INPUT_POST, 'merchant_city', FILTER_SANITIZE_STRING);
-        $amount = filter_input(INPUT_POST, 'amount', FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-        $tid = filter_input(INPUT_POST, 'tid', FILTER_SANITIZE_STRING) ?? '';
-        // Garante que a descrição tenha um valor padrão
-        $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_STRING);
-        $description = !empty($description) ? $description : "Pagamento via Pix";
+        // Captura os dados do formulário
+        $keyType = htmlspecialchars(filter_input(INPUT_POST, 'keyType'));
+        $keyValue = htmlspecialchars(filter_input(INPUT_POST, 'keyValue'));
+        $merchantName = strtoupper(iconv('UTF-8', 'ASCII//TRANSLIT', htmlspecialchars(filter_input(INPUT_POST, 'merchantName'))));
+        $merchantCity = strtoupper(iconv('UTF-8', 'ASCII//TRANSLIT', htmlspecialchars(filter_input(INPUT_POST, 'merchantCity'))));
+        $amount = number_format((float) htmlspecialchars(filter_input(INPUT_POST, 'amount')), 2, '.', '');
+        $tid = !empty($tid) ? $tid : uniqid();
+        $description = htmlspecialchars(filter_input(INPUT_POST, 'description')) ?? "Pagamento via Pix";
 
-        // Mapeamento do tipo da chave Pix
-        $keyTypeMap = [
-            'email'     => Parser::KEY_TYPE_EMAIL,
-            'document'  => Parser::KEY_TYPE_DOCUMENT,
-            'phone'     => Parser::KEY_TYPE_PHONE,
-            'random'    => Parser::KEY_TYPE_RANDOM
-        ];
-
-        if (!isset($keyTypeMap[$keyType])) {
-            throw new Exception("Tipo de chave Pix inválido.");
-        }
-
-        $keyType = $keyTypeMap[$keyType];
-
-        // Validação da chave Pix
-        Parser::validate($keyType, $keyValue);
-
-        // Validação dos outros campos
-        if (empty($merchantName) || empty($merchantCity) || $amount <= 0) {
-            throw new Exception("Todos os campos são obrigatórios e o valor deve ser maior que zero.");
-        }
-
-        // Criando o payload Pix
+        // Geração do Pix Estático
         $payload = (new StaticPayload())
+            ->setAmount($amount)
+            ->setTid($tid)
+            ->setDescription($description)
             ->setPixKey($keyType, $keyValue)
             ->setMerchantName($merchantName)
-            ->setMerchantCity($merchantCity)
-            ->setAmount($amount)
-            ->setTid($tid) // Garantindo que TID não seja null
-            ->setDescription($description); // Garantindo que a descrição não seja null
+            ->setMerchantCity($merchantCity);
 
         // Gerando o código Pix
         $pixCode = $payload->getPixCode();
         $qrCode = $payload->getQRCode();
-
-    } catch (InvalidPixKeyTypeException $e) {
-        $error = "Tipo de chave Pix inválido.";
     } catch (InvalidPixKeyException $e) {
-        $error = "A chave Pix informada é inválida para o tipo selecionado.";
+        $error = "A chave Pix informada é inválida.";
+    } catch (InvalidPixKeyTypeException $e) {
+        $error = "O tipo de chave Pix informado é inválido.";
+    } catch (InvalidEmvFieldException $e) {
+        $error = "Um dos campos do Pix contém dados inválidos.";
+    } catch (EmvIdIsRequiredException $e) {
+        $error = "Um campo obrigatório do Pix não foi preenchido.";
     } catch (Exception $e) {
         $error = $e->getMessage();
     }
 }
 ?>
-
 
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -73,12 +55,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerador de QR Code Pix</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.7-beta.29/jquery.inputmask.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
     <style>
         .container-custom {
-            max-width: 1024px;
+            padding: 20px;
+            max-width: 1180px;
         }
+        
         .qr-code-container {
             display: flex;
             justify-content: center;
@@ -100,128 +84,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: block;
             width: 100%;
         }
-
     </style>
 </head>
 <body class="bg-light">
-
-    <div class="container container-custom mt-3">
+    <div class="container container-custom">
         <div class="row">
-            <!-- Coluna do Formulário -->
             <div class="col-md-6">
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <h2 class="text-center mb-4">Gerador de QR Code Pix</h2>
-
-                        <?php if (isset($error)): ?>
+                        <?php if ($error): ?>
                             <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
                         <?php endif; ?>
-
                         <form method="POST">
                             <div class="mb-3">
                                 <label class="form-label">Tipo da Chave Pix:</label>
-                                <select name="key_type" id="key_type" class="form-select" required>
+                                <select name="keyType" id="keyType" class="form-select" required>
                                     <option value="email">E-mail</option>
                                     <option value="document">CPF/CNPJ</option>
                                     <option value="phone">Telefone</option>
                                     <option value="random">Chave Aleatória</option>
                                 </select>
                             </div>
-
                             <div class="mb-3">
                                 <label class="form-label">Chave Pix:</label>
-                                <input type="text" name="pix_key" id="pix_key" class="form-control" required>
+                                <input placeholder="Email/CPF/CNPJ/Telefone/Chave Aleatória" type="text" name="keyValue" id="keyValue" class="form-control" required>
                             </div>
-
-                            <div class="mb-3">
+                            <div class="row mb-3">
+                            <div class="col-md-6">
                                 <label class="form-label">Nome do Recebedor:</label>
-                                <input placeholder="Nome do Recebedor" type="text" name="merchant_name" class="form-control" required>
+                                <input placeholder="Nome do recebedor" type="text" name="merchantName" class="form-control" required>
                             </div>
-
-                            <div class="mb-3">
+                            <div class="col-md-6">
                                 <label class="form-label">Cidade do Recebedor:</label>
-                                <input placeholder="Cidade do Recebedor" type="text" name="merchant_city" class="form-control" required>
+                                <input placeholder="Cidade do recebedor" type="text" name="merchantCity" class="form-control" required>
                             </div>
+                            </div>
+                            
                             <div class="mb-3">
-        <label class="form-label">Descrição do Pagamento (opcional):</label>
-        <input type="text" name="description" class="form-control" placeholder="Ex: Compra de produto, pagamento mensalidade, etc.">
-    </div>
+                                <label class="form-label">Descrição do Pagamento:</label>
+                                <input placeholder="Descrição do Pagamento" type="text" name="description" class="form-control">
+                            </div>
                             <div class="mb-3">
                                 <label class="form-label">Valor (R$):</label>
-                                <input placeholder="Valor" type="number" step="0.01" name="amount" class="form-control" required>
+                                <input placeholder="34" type="text" name="amount" id="amount" class="form-control" required>
                             </div>
-
                             <button type="submit" class="btn btn-primary w-100">Gerar QR Code</button>
                         </form>
                     </div>
                 </div>
             </div>
-
-            <!-- Coluna do QR Code -->
-            <div class="col-md-6 qr-code-container ">
-                <?php if (isset($pixCode)): ?>
+            <div class="col-md-6 text-center qr-code-container">
+                <?php if ($pixCode): ?>
                     <div class="card shadow-sm">
-                        <div class="card-body text-center  p-4">
+                        <div class="card-body">
                             <h5>Código Pix:</h5>
-                            <div id="pixCodeBox" class="pix-code-box mt-4">
-                                <p class="alert alert-success">
+                            <div id="pixCodeBox" class="alert alert-success p-2 mt-3">
                                 <?= htmlspecialchars($pixCode) ?>
-                                </p></div>
+                            </div>
                             <button class="btn btn-outline-success copy-btn" onclick="copyToClipboard()">Copiar Código Pix</button>
                             <p id="copyMessage" class="text-success" style="display: none;">Copiado!</p>
-
                             <h5 class="mt-5">QR Code:</h5>
-                            <img src="<?= htmlspecialchars($qrCode) ?>" alt="QR Code de Pagamento" class="qrcode-img">
+                            <img src="<?= htmlspecialchars($qrCode) ?>" alt="QR Code de Pagamento" class="img-fluid qrcode-img">
                         </div>
                     </div>
                 <?php endif; ?>
             </div>
         </div>
     </div>
-
     <script>
         $(document).ready(function() {
-            function aplicarMascara() {
-                let tipoChave = $("#key_type").val();
-                let inputChave = $("#pix_key");
-
-                inputChave.val("").removeAttr("placeholder");
-
-                if (tipoChave === "document") {
-                    inputChave.attr("placeholder", "CPF ou CNPJ");
-                    inputChave.inputmask({
-                        mask: ["999.999.999-99", "99.999.999/9999-99"],
-                        keepStatic: true
-                    });
-                } else if (tipoChave === "phone") {
-                    inputChave.attr("placeholder", "(00) 00000-0000");
-                    inputChave.inputmask({
-                        mask: "(99) 99999-9999"
-                    });
-                }else if (tipoChave === "email") {
-                    inputChave.attr("placeholder", "bruce@gmail.com");
-                    inputChave.inputmask({
-                        mask: ""
-                    });
-                } else {
-                    inputChave.inputmask("remove");
+            $('#amount').mask('000000.00', {reverse: true});
+            
+            $('#keyType').change(function() {
+                var keyType = $(this).val();
+                var keyInput = $('#keyValue');
+                keyInput.val('').unmask();
+                if (keyType === 'phone') {
+                    keyInput.mask('(00) 00000-0000');
+                } else if (keyType === 'document') {
+                    keyInput.mask('000.000.000-00');
                 }
-            }
-
-            $("#key_type").change(aplicarMascara);
-            aplicarMascara();
+            });
         });
-
         function copyToClipboard() {
-            let copyText = document.getElementById("pixCodeBox").innerText;
-            navigator.clipboard.writeText(copyText).then(() => {
-                document.getElementById("copyMessage").style.display = "block";
-                setTimeout(() => {
-                    document.getElementById("copyMessage").style.display = "none";
+            var text = document.getElementById('pixCodeBox').innerText;
+            navigator.clipboard.writeText(text).then(function() {
+                document.getElementById('copyMessage').style.display = 'block';
+                setTimeout(function() {
+                    document.getElementById('copyMessage').style.display = 'none';
                 }, 2000);
             });
         }
     </script>
-
 </body>
 </html>
