@@ -16,7 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $merchantCity = filter_input(INPUT_POST, 'merchant_city', FILTER_SANITIZE_STRING);
         $amount = filter_input(INPUT_POST, 'amount', FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
         $tid = filter_input(INPUT_POST, 'tid', FILTER_SANITIZE_STRING) ?? '';
-        $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_STRING) ?? '';
+        // Garante que a descrição tenha um valor padrão
+        $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_STRING);
+        $description = !empty($description) ? $description : "Pagamento via Pix";
 
         // Mapeamento do tipo da chave Pix
         $keyTypeMap = [
@@ -133,17 +135,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             <div class="mb-3">
                                 <label class="form-label">Nome do Recebedor:</label>
-                                <input type="text" name="merchant_name" class="form-control" required>
+                                <input placeholder="Nome do Recebedor" type="text" name="merchant_name" class="form-control" required>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label">Cidade do Recebedor:</label>
-                                <input type="text" name="merchant_city" class="form-control" required>
+                                <input placeholder="Cidade do Recebedor" type="text" name="merchant_city" class="form-control" required>
                             </div>
-
+                            <div class="mb-3">
+        <label class="form-label">Descrição do Pagamento (opcional):</label>
+        <input type="text" name="description" class="form-control" placeholder="Ex: Compra de produto, pagamento mensalidade, etc.">
+    </div>
                             <div class="mb-3">
                                 <label class="form-label">Valor (R$):</label>
-                                <input type="number" step="0.01" name="amount" class="form-control" required>
+                                <input placeholder="Valor" type="number" step="0.01" name="amount" class="form-control" required>
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100">Gerar QR Code</button>
@@ -162,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <p class="alert alert-success">
                                 <?= htmlspecialchars($pixCode) ?>
                                 </p></div>
-                            <button class="btn btn-outline-secondary copy-btn" onclick="copyToClipboard()">Copiar Código Pix</button>
+                            <button class="btn btn-outline-success copy-btn" onclick="copyToClipboard()">Copiar Código Pix</button>
                             <p id="copyMessage" class="text-success" style="display: none;">Copiado!</p>
 
                             <h5 class="mt-5">QR Code:</h5>
@@ -192,6 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     inputChave.attr("placeholder", "(00) 00000-0000");
                     inputChave.inputmask({
                         mask: "(99) 99999-9999"
+                    });
+                }else if (tipoChave === "email") {
+                    inputChave.attr("placeholder", "bruce@gmail.com");
+                    inputChave.inputmask({
+                        mask: ""
                     });
                 } else {
                     inputChave.inputmask("remove");
