@@ -1,0 +1,7 @@
+{
+    "require": {
+        "piggly/php-pix": "^3.0",
+        "php": "^8.0",
+		"ext-gd": "*"
+    }
+}
